@@ -98,13 +98,13 @@ class ShapePredictor(nn.Module):
         self.use_delta_v = use_delta_v
         self.use_sym_idx = use_sym_idx
         self.use_smal_betas = use_smal_betas
-        self.ref_delta_v = torch.Tensor(np.zeros((num_verts,3))).cuda() 
+        self.ref_delta_v = torch.Tensor(np.zeros((num_verts,3))).cpu()
 
 
     def forward(self, feat):
         if self.use_sym_idx:
             batch_size = feat.shape[0]
-            delta_v = torch.Tensor(np.zeros((batch_size,self.num_verts,3))).cuda()
+            delta_v = torch.Tensor(np.zeros((batch_size,self.num_verts,3))).cpu()
             feat = self.fc(feat)
             self.shape_f = feat
      
@@ -193,7 +193,7 @@ class ScalePredictor(nn.Module):
         if not self.use_camera:
             scale = np.zeros((feat.shape[0],1))
             scale[:,0] = 0.
-            return torch.Tensor(scale).cuda() 
+            return torch.Tensor(scale).cpu()
         if self.norm_f0 != 0:
             off = 0.
         else:
@@ -223,8 +223,8 @@ class TransPredictor(nn.Module):
             print('Unknown projection type')
 
     def forward(self, feat):
-        trans = torch.Tensor(np.zeros((feat.shape[0],3))).cuda()
-        f = torch.Tensor(np.zeros((feat.shape[0],1))).cuda()
+        trans = torch.Tensor(np.zeros((feat.shape[0],3))).cpu()
+        f = torch.Tensor(np.zeros((feat.shape[0],1))).cpu()
         feat_xy = feat
         feat_z = feat
 

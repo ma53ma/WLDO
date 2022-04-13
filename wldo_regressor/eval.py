@@ -27,7 +27,7 @@ parser.add_argument('--output_dir', default='../data/results', help='Where to ex
 parser.add_argument('--checkpoint', default='../data/pretrained/3501_00034_betas_v4.pth', help='Path to network checkpoint')
 parser.add_argument('--dataset', default='stanford', choices=['stanford', 'animal_pose'], help='Choose evaluation dataset')
 parser.add_argument('--log_freq', default=50, type=int, help='Frequency of printing intermediate results')
-parser.add_argument('--batch_size', default=32, type=int, help='Batch size for testing')
+parser.add_argument('--batch_size', default=1, type=int, help='Batch size for testing')
 parser.add_argument('--num_workers', default=0, type=int, help='Number of processes for data loading')
 parser.add_argument('--shape_family_id', default=-1, type=int, help='Shape family to use')
 parser.add_argument('--gpu_ids', default="0", type=str, help='GPUs to use. Format as string, e.g. "0,1,2')
@@ -73,22 +73,22 @@ def run_evaluation(model, dataset, device, result_dir,
 
         curr_batch_size = preds['img'].shape[0]
 
-        pck[step * batch_size:step * batch_size + curr_batch_size] = preds['acc_PCK'].data.cpu().numpy()
-        acc_sil_2d[step * batch_size:step * batch_size + curr_batch_size] = preds['acc_IOU'].data.cpu().numpy()
+        # pck[step * batch_size:step * batch_size + curr_batch_size] = preds['acc_PCK'].data.cpu().numpy()
+        # acc_sil_2d[step * batch_size:step * batch_size + curr_batch_size] = preds['acc_IOU'].data.cpu().numpy()
         smpl_pose[step * batch_size:step * batch_size + curr_batch_size] = preds['pose'].data.cpu().numpy()
         smpl_betas[step * batch_size:step * batch_size + curr_batch_size, :preds['betas'].shape[1]] = preds['betas'].data.cpu().numpy()
         smpl_camera[step * batch_size:step * batch_size + curr_batch_size] = preds['camera'].data.cpu().numpy()
 
+        '''
         for part in pck_by_part:
             pck_by_part[part][step * batch_size:step * batch_size + curr_batch_size] = preds[f'{part}_PCK'].data.cpu().numpy()
-
         tqdm_iterator.desc = "PCK: {0:.2f}, IOU: {1:.2f}".format(
             pck[:(step * batch_size + curr_batch_size)].mean(),
             acc_sil_2d[:(step * batch_size + curr_batch_size)].mean())
         tqdm_iterator.update()
-
+        
         output_figs = np.transpose(
-            Visualizer.generate_output_figures(preds).data.cpu().numpy(), 
+            Visualizer.generate_output_figures(preds).data.cpu().numpy(),
             (0, 1, 3, 4, 2))
         
         for img_id in range(len(preds['imgname'])):
@@ -102,6 +102,7 @@ def run_evaluation(model, dataset, device, result_dir,
             smpl_imgname.append(path_suffix)
             npz_file = "{0}.npz".format(os.path.splitext(img_file)[0])
 
+            
             if save_results:
                 cv2.imwrite(img_file, output_fig[:, :, ::-1] * 255.0)
                 np.savez_compressed(npz_file,
@@ -114,7 +115,7 @@ def run_evaluation(model, dataset, device, result_dir,
                     acc_SIL_2D=preds['acc_IOU'][img_id].data.cpu().numpy(),
                     **{f'{part}_PCK':preds[f'{part}_PCK'].data.cpu().numpy() for part in pck_by_part}
                 )
-
+        '''
     # Print final results during evaluation
 
     # pck_data = np.concatenate(
@@ -127,6 +128,7 @@ def run_evaluation(model, dataset, device, result_dir,
     
     report = f"""*** Final Results ***
 
+    '''
     SIL IOU 2D: {np.nanmean(acc_sil_2d):.5f}
     PCK 2D: {np.nanmean(pck):.5f}"""
 
@@ -152,7 +154,7 @@ def load_model_from_disk(model_path, shape_family_id, load_from_disk, device):
     if model_path is not None:
         print( "found previous model %s" % model_path )
         print( "   -> resuming" )
-        model_state_dict = torch.load(model_path)
+        model_state_dict = torch.load(model_path, map_location=torch.device('cpu'))
 
         own_state = model.state_dict()
         for name, param in model_state_dict.items():
@@ -175,7 +177,7 @@ if __name__ == '__main__':
     print (os.environ['CUDA_VISIBLE_DEVICES'])
 
     print("Let's use", torch.cuda.device_count(), "GPUs!")
-    assert torch.cuda.device_count() == 1, "Currently only 1 GPU is supported"
+    assert torch.cuda.device_count() <= 1, "Currently only 0/1 GPU is supported"
 
     # Create new result output directory
     print ("RESULTS: {0}".format(args.output_dir))

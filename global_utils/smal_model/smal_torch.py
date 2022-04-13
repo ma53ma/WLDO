@@ -16,6 +16,9 @@ from .batch_lbs import batch_rodrigues, batch_global_rigid_transformation
 from .smal_basics import align_smal_template_to_symmetry_axis #, get_smal_template
 from global_utils import config
 
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 # There are chumpy variables so convert them to numpy.
 def undo_chumpy(x):
     return x if isinstance(x, np.ndarray) else x.r
@@ -107,6 +110,21 @@ class SMAL(nn.Module):
             torch.Tensor(undo_chumpy(dd['weights'])),
             requires_grad=False).to(device)
 
+        self.first_call = True
+        self.fig = None
+        self.ax = None
+        self.colors = np.array([[1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],
+                                [1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[0.0, 1.0, 0.0, 1.0],[0.0, 1.0, 0.0, 1.0],
+                                [1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[0.0, 0.0, 1.0, 1.0],[0.0, 1.0, 0.0, 1.0],
+                                [1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[0.0, 0.0, 1.0, 1.0],[1.0, 0.0, 0.0, 1.0],
+                                [1.0, 0.0, 0.0, 1.0],[0.0, 1.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],
+                                [0.0, 0.0, 1.0, 1.0],[0.0, 1.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],
+                                [0.0, 0.0, 1.0, 1.0],[0.0, 1.0, 0.0, 1.0],[1.0, 1.0, 0.0, 1.0],[1.0, 1.0, 0.0, 1.0],
+                                [1.0, 1.0, 0.0, 1.0],[1.0, 1.0, 0.0, 1.0],[1.0, 1.0, 0.0, 1.0],[1.0, 1.0, 0.0, 1.0],
+                                [1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0],[1.0, 0.0, 0.0, 1.0]])
+
+        self.count = 0
+
 
     def __call__(self, beta, theta, trans=None, del_v=None, betas_logscale=None, get_skin=True, v_template=None):
 
@@ -133,18 +151,31 @@ class SMAL(nn.Module):
             else:
                 v_shaped = v_template + del_v 
 
+
+        ## joints are obtained by regressing from the vertices of the mesh. Do we need to do that?
         # 2. Infer shape-dependent joint locations.
         Jx = torch.matmul(v_shaped[:, :, 0], self.J_regressor)
         Jy = torch.matmul(v_shaped[:, :, 1], self.J_regressor)
         Jz = torch.matmul(v_shaped[:, :, 2], self.J_regressor)
         J = torch.stack([Jx, Jy, Jz], dim=2)
-        
+
+        # figure out transform somehow
+
+        #for j in J[0]:
+        #    xyz = j.numpy()
+        #    print(str(xyz[0]) + ",\t" + str(xyz[1]) + ",\t" + str(xyz[2]) + ",\t", end='')
+        #print("")
+        # print('after step two, J size: ', np.shape(J))  # size [1, 35, 3]
         # 3. Add pose blend shapes
         # N x 24 x 3 x 3
+
+
+        ## Rs have to do with rotation?
+        # Obtaining rotation matrices for each joint from the Rodrigues representation
         if len(theta.shape) == 4:
             Rs = theta
         else:
-            Rs = torch.reshape( batch_rodrigues(torch.reshape(theta, [-1, 3])), [-1, 35, 3, 3])
+            Rs = torch.reshape(batch_rodrigues(torch.reshape(theta, [-1, 3])), [-1, 35, 3, 3])
         
         # Ignore global rotation.
         pose_feature = torch.reshape(Rs[:, 1:, :, :] - torch.eye(3).to(beta.device), [-1, 306])
@@ -153,11 +184,33 @@ class SMAL(nn.Module):
             torch.matmul(pose_feature, self.posedirs),
             [-1, self.size[0], self.size[1]]) + v_shaped
 
-        #4. Get the global joint location
+        # print('parents: ', self.parents)
+
+        #4. Get the global joint location (only place parents is used)
         self.J_transformed, A = batch_global_rigid_transformation(
             Rs, J, self.parents, betas_logscale=betas_logscale)
-
-
+        # A is the ordered set of joint ancestors
+        '''
+        if self.first_call:
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(111, projection='3d')
+            self.first_call = False
+        new_joints = self.J_transformed[0]
+        print('joints: ', new_joints)
+        plt.cla()
+        self.ax.scatter(new_joints[:, 0], new_joints[:, 2], -new_joints[:, 1], c=self.colors)
+        self.ax.set_xlabel('x')
+        self.ax.set_ylabel('y')
+        self.ax.set_zlabel('z')
+        self.ax.view_init(0, 0)
+        self.ax.set_xlim(-.75, 0.0)
+        self.ax.set_ylim(-1, 0.5)
+        self.ax.set_zlim(-.5, 0.5)
+        plt.savefig('/home/masselmeier/Desktop/SP22/CS8803/outputs/' + str(self.count) + '.png')
+        self.count += 1
+        # print('J transformed shape: ', np.shape(self.J_transformed))  # size [1, 35, 3]
+        # print('J_transformed: ', self.J_transformed)
+        '''
         # 5. Do skinning:
         num_batch = theta.shape[0]
         
@@ -185,6 +238,18 @@ class SMAL(nn.Module):
         joint_z = torch.matmul(verts[:, :, 2], self.J_regressor)
         joints = torch.stack([joint_x, joint_y, joint_z], dim=2)
 
+        '''
+        output_txt = '/home/masselmeier/Desktop/SP22/CS8803/motion_imitation/retarget_motion/data/WLDO_output.txt'
+        with open(output_txt, 'a') as f:
+            for i in range(0, len(joints[0])):
+                j = joints[0][i]
+                xyz = j.numpy()
+                f.write(str(xyz[0]) + ",\t" + str(xyz[1]) + ",\t" + str(xyz[2]))
+                if i < len(joints[0]) - 1:
+                    f.write(",\t")
+            f.write('\n')
+        '''
+        # print('final joints: ', joints)  # size [1, 35, 3]
         joints = torch.cat([
             joints,
             verts[:, None, 1863], # end_of_nose
@@ -195,6 +260,7 @@ class SMAL(nn.Module):
             verts[:, None, 1097], # right eye
             ], dim = 1) 
 
+        # print('final joints shape: ', np.shape(joints))
         if get_skin:
             return verts, joints, Rs, v_shaped
         else:

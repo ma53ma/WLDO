@@ -10,7 +10,7 @@ import os
 
 from global_utils.smal_model.smal_torch import SMAL
 from global_utils.nnutils.smal_mesh_net import MeshNet
-from global_utils.nnutils.nmr import NeuralRenderer
+# from global_utils.nnutils.nmr import NeuralRenderer
 import global_utils.nnutils.geom_utils as geom_utils
 
 from global_utils import config
@@ -24,13 +24,14 @@ class Model(nn.Module):
 
         self.load_from_disk = load_from_disk
 
+        '''
         self.model_renderer = NeuralRenderer(
             config.IMG_RES, proj_type=config.PROJECTION, 
             norm_f0=config.NORM_F0, 
             norm_f=config.NORM_F, 
             norm_z=config.NORM_Z)
         self.model_renderer.directional_light_only()
-
+        '''
         self.netG_DETAIL = MeshNet(
             [config.IMG_RES, config.IMG_RES], 
             norm_f0=config.NORM_F0,
@@ -45,6 +46,7 @@ class Model(nn.Module):
         """Run forward pass; called by both functions <optimize_parameters> and <test>.
         If demo is False, do not calculate accuracy metrics (PCK, IOU)."""
 
+        # print('img name', batch_input['imgname'])
         img = batch_input['img']
         keypoints = batch_input['keypoints']
         seg=batch_input['seg']
@@ -58,14 +60,15 @@ class Model(nn.Module):
         batch_size = img.shape[0]
 
         if not self.load_from_disk:
+            # input size: (batch size, 3, img_size, img_size)
+            # print('input to netG_detail: ', img.size())
             pred_codes, _ = self.netG_DETAIL(img) # This is the generator
-            scale_pred, trans_pred, pose_pred, betas_pred, betas_logscale = \
-                pred_codes
+            scale_pred, trans_pred, pose_pred, betas_pred, betas_logscale = pred_codes
 
             all_betas = torch.cat([betas_pred, betas_logscale], dim = 1)
             pred_camera = torch.cat([
                     scale_pred[:, [0]], 
-                    torch.ones(batch_size, 2).cuda() * config.IMG_RES / 2
+                    torch.ones(batch_size, 2).cpu() * config.IMG_RES / 2
             ], dim = 1)
         else:
             betas_pred = batch_input['pred_shape'][:, :20]
@@ -79,6 +82,12 @@ class Model(nn.Module):
             trans_pred = batch_input['pred_trans']
             pred_camera = batch_input['pred_camera']
 
+
+        ## OUTPUTS FROM MESHNET DETECTION HEADS ##
+        #print('betas pred shape: ', np.shape(betas_pred))
+        #print('pose pred shape: ', np.shape(pose_pred))
+        #print('trans pred shape: ', trans_pred)
+
         verts, joints, _, _ = self.smal(
             betas_pred, pose_pred, 
             trans=trans_pred,
@@ -86,16 +95,16 @@ class Model(nn.Module):
 
         faces = self.smal.faces.unsqueeze(0).expand(
             verts.shape[0], 7774, 3)
-       
-        synth_rgb, synth_silhouettes = self.model_renderer(
-            verts, faces, pred_camera)
-
-        synth_rgb = torch.clamp(synth_rgb, 0.0, 1.0)
-        synth_silhouettes = synth_silhouettes.unsqueeze(1)
-
         labelled_joints_3d = joints[:, config.MODEL_JOINTS]
-        synth_landmarks = self.model_renderer.project_points(
-            labelled_joints_3d, pred_camera)
+
+        #synth_rgb, synth_silhouettes = self.model_renderer(
+        #    verts, faces, pred_camera)
+
+        #synth_rgb = torch.clamp(synth_rgb, 0.0, 1.0)
+        #synth_silhouettes = synth_silhouettes.unsqueeze(1)
+
+        #synth_landmarks = self.model_renderer.project_points(
+        #    labelled_joints_3d, pred_camera)
         
         preds = {}
         preds['pose'] = pose_pred
@@ -106,7 +115,9 @@ class Model(nn.Module):
         preds['verts'] = verts
         preds['joints_3d'] = labelled_joints_3d
         preds['faces'] = faces
+        # print('labelled_joints_3d: ', np.shape(labelled_joints_3d))
 
+        '''
         if not demo:
             preds['acc_PCK'] = Metrics.PCK(
                 synth_landmarks, keypoints, 
@@ -128,5 +139,5 @@ class Model(nn.Module):
         preds['synth_xyz'] = synth_rgb
         preds['synth_silhouettes'] = synth_silhouettes
         preds['synth_landmarks'] = synth_landmarks
-
+        '''
         return preds

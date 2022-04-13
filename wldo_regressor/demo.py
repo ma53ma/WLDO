@@ -22,10 +22,10 @@ nn = torch.nn
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--checkpoint', default='../data/pretrained/3501_00034_betas_v4.pth', help='Path to network checkpoint')
-parser.add_argument('--src_dir', default="../example_imgs", type=str, help='The directory of input images')
+parser.add_argument('--src_dir', default="../example4_imgs", type=str, help='The directory of input images')
 parser.add_argument('--result_dir', default='../demo_out', help='Where to export the output data')
 parser.add_argument('--shape_family_id', default=-1, type=int, help='Shape family to use')
-parser.add_argument('--batch_size', default=1, type=int)
+parser.add_argument('--batch_size', default=4, type=int)
 parser.add_argument('--gpu_ids', default="0", type=str, help='GPUs to use. Format as string, e.g. "0,1,2')
 
 def run_demo(args, device):
@@ -49,10 +49,10 @@ def run_demo(args, device):
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)  # , num_workers=num_workers)
 
     # Store smal parameters
-    smal_pose = np.zeros((len(dataset), 105))
-    smal_betas = np.zeros((len(dataset), 26))
-    smal_camera = np.zeros((len(dataset), 3))
-    smal_joints3d = np.zeros((len(dataset), 20, 3))
+    smal_pose = np.zeros((len(dataset), 105))  # theta outputs (35x3)
+    smal_betas = np.zeros((len(dataset), 26))  # beta outputs  (skin parameters)
+    smal_camera = np.zeros((len(dataset), 3))  # translation (x,y) and focal length
+    smal_joints3d = np.zeros((len(dataset), 20, 3))  # why only 20 joints?
     smal_imgname = []
     smal_has_bbox = []
 
@@ -60,6 +60,8 @@ def run_demo(args, device):
     tqdm_iterator = tqdm(data_loader, desc='Eval', total=len(data_loader))
     for step, batch in enumerate(tqdm_iterator):
         with torch.no_grad():
+            # model is from model.py
+            # print('input batch size: ', batch.size)
             preds = model(batch, demo=True)
 
             # make sure we dont overwrite something
@@ -73,6 +75,11 @@ def run_demo(args, device):
         smal_camera[step * batch_size:step * batch_size + curr_batch_size] = preds['camera'].data.cpu().numpy()
         smal_joints3d[step * batch_size:step * batch_size + curr_batch_size] = preds['joints_3d'].data.cpu().numpy()
 
+
+        print('preds, pose: ', preds['joints_3d'].data.cpu().numpy())
+        print('preds, camera: ', preds['camera'].data.cpu().numpy())
+
+        '''
         output_figs = np.transpose(
             Visualizer.generate_demo_output(preds).data.cpu().numpy(),
             (0, 1, 3, 4, 2))
@@ -112,6 +119,7 @@ def run_demo(args, device):
 
     print("--> Exported param file: {0}".format(param_file))
     print('*** FINISHED ***')
+    '''
 
 def load_model_from_disk(model_path, shape_family_id, load_from_disk, device):
     model = Model(device, shape_family_id, load_from_disk)
@@ -122,7 +130,7 @@ def load_model_from_disk(model_path, shape_family_id, load_from_disk, device):
     if model_path is not None:
         print( "found previous model %s" % model_path )
         print( "   -> resuming" )
-        model_state_dict = torch.load(model_path)
+        model_state_dict = torch.load(model_path, map_location=torch.device('cpu'))
 
         own_state = model.state_dict()
         for name, param in model_state_dict.items():
@@ -144,7 +152,7 @@ if __name__ == '__main__':
     print (os.environ['CUDA_VISIBLE_DEVICES'])
 
     print("Let's use", torch.cuda.device_count(), "GPUs!")
-    assert torch.cuda.device_count() == 1, "Currently only 1 GPU is supported"
+    assert torch.cuda.device_count() <= 1, "Currently up to 1 GPU is supported"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
