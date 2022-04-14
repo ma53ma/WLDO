@@ -44,8 +44,9 @@ def write_to_txt(joints, filename):
                 f.write(",\t")
         f.write('\n')
 
-def plot_joints(joints, count):
+def plot_joints(joints, count, ax):
     plt.cla()
+
     ax.scatter(joints[:, 0], joints[:, 2], -joints[:, 1], c=colors)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
@@ -54,7 +55,7 @@ def plot_joints(joints, count):
     ax.set_xlim(-.75, 0.0)
     ax.set_ylim(-1, 0.5)
     ax.set_zlim(-.5, 0.5)
-    plt.savefig('../outputs/' + str(count) + '.png')
+    plt.savefig('/home/masselmeier/Desktop/SP22/CS8803/reconstructed_outputs/' + str(count) + '.png')
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -74,38 +75,43 @@ if __name__ == '__main__':
     dataset = DemoDataset(args.src_dir)
 
     refiner = Refiner(dataset, config, num_frames, args, device)
-
+    '''
     train_data_loader = DataLoader(dataset, batch_size=num_frames, shuffle=False)  # , num_workers=num_workers)
 
     tqdm_iterator = tqdm(train_data_loader, desc='train', total=len(train_data_loader))
 
+    refiner.WLDO_model.train()
     # predict:
     count = 0
     for step, batch in enumerate(tqdm_iterator):
         loss = refiner.train(batch)
+        print('loss: ', loss)
 
 
-    '''
-    pred_data_loader = DataLoader(dataset, batch_size=1, shuffle=False)  # , num_workers=num_workers)
+    pred_data_loader = DataLoader(dataset, batch_size=num_frames, shuffle=False)  # , num_workers=num_workers)
 
     tqdm_iterator = tqdm(pred_data_loader, desc='Eval', total=len(pred_data_loader))
 
-    #fig = plt.figure()
-    #ax = fig.add_subplot(111, projection='3d')
-
+    '''
     output_txt_filename = 'mod_joints.txt'
     open('../text_files/' + output_txt_filename, "w").close()
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
 
+
+    refiner.WLDO_model.eval()
     # predict:
     count = 0
+    # print('starting eval')
     for step, batch in enumerate(tqdm_iterator):
-        orig_Jsmal, Jsmal = refiner.predict(batch)
+        with torch.no_grad():
+            Jsmal = refiner.predict(batch)
         #print('original Jsmal: ', orig_Jsmal)
         #print('refined Jsmal: ', Jsmal)
-        new_joints = torch.squeeze(orig_Jsmal).detach().numpy()
-        # print('joints size: ', np.shape(new_joints))
-
-        # plot_joints(new_joints, count)
-        write_to_txt(new_joints, output_txt_filename)
-        count += 1
-    '''
+        # print('Jsmal size: ', Jsmal.size())
+        Jsmal = Jsmal.detach().numpy()
+        for frame in Jsmal:
+            # print('frame size: ', np.shape(frame))
+            plot_joints(frame, count, ax)
+            # write_to_txt(new_joints, output_txt_filename)
+            count += 1

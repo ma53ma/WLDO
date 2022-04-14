@@ -238,8 +238,7 @@ class Refiner(object):
         self.loss_shape = self.shape_loss_weight * shape_variance(shapes, self.shape)
 
         # (3D CONSISTENCY LOSS)
-        self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose,
-                                                                     weights=self.init_pose_weight)
+        self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose)
         # Endpoints should be smooth!! (SMOOTHNESS LOSS)
         self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
 
@@ -287,7 +286,7 @@ class Refiner(object):
 
         # (3D CONSISTENCY LOSS)
         # where is init_pose coming?
-        # self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose, weights=self.init_pose_weight)
+        self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose)
 
         # Endpoints should be smooth!! (SMOOTHNESS LOSS)
         self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
@@ -314,41 +313,18 @@ class Refiner(object):
 
         Runs the model with images.
         """
+        # print('in predict: ')
+        preds = self.WLDO_model(batch)
+        # print('after model call ')
+        poses = preds['pose']
+        shapes = preds['betas']
 
-        # with torch.no_grad():
-        # model is from model.py
-        # print('input batch size: ', batch.size)
+        verts, Js, pred_Rs, _ = self.smal(shapes, poses)  # TO ADD: trans=trans_pred,betas_logscale=betas_logscale)
+        # print('after smal call')
 
-        preds = self.WLDO_model(batch, demo=True)
-        trans_pred = preds['trans']
-        pose_pred = preds['pose']
-        betas_pred = preds['betas']
-        camera_pred = preds['camera']
-        scale_pred = torch.unsqueeze(camera_pred[:, 0], 1)
-        trans_x_pred = torch.unsqueeze(trans_pred[:, 0], 1)
-        trans_y_pred = torch.unsqueeze(trans_pred[:, 1], 1)
-        self.img_feat = torch.cat((scale_pred, trans_x_pred, trans_y_pred, pose_pred, betas_pred), 1)
-        #print('img feat size: ', self.img_feat.size())
-        #print('theta prev size: ', self.theta_prev.size())
-        state = torch.cat((self.img_feat, self.theta_prev), 1)
-        delta_theta = self.threed_enc_fn(state)
-
-        poses = pose_pred
-        shapes = betas_pred
-        orig_verts, orig_Js, orig_Rs, _ = self.smal(shapes, poses)  # ,trans=trans_pred,betas_logscale=betas_logscale)
-        orig_Jsmal = self.smal.J_transformed
-
-        theta_mod = self.img_feat + delta_theta
-
-        poses = theta_mod[:, self.num_cam:(self.num_cam + self.num_theta)]
-        shapes = theta_mod[:, (self.num_cam + self.num_theta):]
-
-        verts, Js, pred_Rs, _ = self.smal(shapes, poses)  # ,trans=trans_pred,betas_logscale=betas_logscale)
         Jsmal = self.smal.J_transformed
-
-        self.theta_prev = theta_mod
-
-        return orig_Jsmal, Jsmal
+        # print('returning')
+        return Jsmal
 
 # All the  loss functions.
 
