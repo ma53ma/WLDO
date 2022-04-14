@@ -299,6 +299,7 @@ class Refiner(object):
 
         self.e_optimizer.zero_grad()
         self.total_loss.backward()
+        self.e_optimizer.step()
 
         return self.total_loss
 
