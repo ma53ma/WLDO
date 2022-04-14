@@ -74,6 +74,18 @@ if __name__ == '__main__':
     dataset = DemoDataset(args.src_dir)
 
     refiner = Refiner(dataset, config, num_frames, args, device)
+
+    train_data_loader = DataLoader(dataset, batch_size=num_frames, shuffle=False)  # , num_workers=num_workers)
+
+    tqdm_iterator = tqdm(train_data_loader, desc='train', total=len(train_data_loader))
+
+    # predict:
+    count = 0
+    for step, batch in enumerate(tqdm_iterator):
+        loss = refiner.train(batch)
+
+
+    '''
     pred_data_loader = DataLoader(dataset, batch_size=1, shuffle=False)  # , num_workers=num_workers)
 
     tqdm_iterator = tqdm(pred_data_loader, desc='Eval', total=len(pred_data_loader))
@@ -84,6 +96,7 @@ if __name__ == '__main__':
     output_txt_filename = 'mod_joints.txt'
     open('../text_files/' + output_txt_filename, "w").close()
 
+    # predict:
     count = 0
     for step, batch in enumerate(tqdm_iterator):
         orig_Jsmal, Jsmal = refiner.predict(batch)
@@ -95,3 +108,4 @@ if __name__ == '__main__':
         # plot_joints(new_joints, count)
         write_to_txt(new_joints, output_txt_filename)
         count += 1
+    '''

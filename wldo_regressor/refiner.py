@@ -68,19 +68,16 @@ class Refiner(object):
         # Data
         self.batch_size = num_frames
         self.img_size = config.img_size
+        '''
         self.data_loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)  # , num_workers=num_workers)
         tqdm_iterator = tqdm(self.data_loader, desc='Eval', total=len(self.data_loader))
         # only iterates once
         for step, batch in enumerate(tqdm_iterator):
             self.batch = batch
-
+        '''
         input_size = [self.batch_size, 3, self.img_size, self.img_size]  # [self.batch_size, self.img_size, self.img_size, 3]
         self.images = torch.zeros(input_size, dtype=torch.float32)  #tf.placeholder(tf.float32, shape=input_size)
-        # self.img_feat_pl = tf.placeholder(tf.float32, shape=(self.batch_size, 2048))
-        # self.img_feat_var = tf.get_variable("img_feat_var", dtype=tf.float32, shape=(self.batch_size, 2048))
         self.img_feat = torch.zeros([self.batch_size, 2048], dtype=torch.float32)
-        # kp_size = (self.batch_size, 19, 3)
-        # self.kps_pl = tf.placeholder(tf.float32, shape=kp_size)
 
         # Camera type!
         self.num_cam = 3
@@ -89,45 +86,39 @@ class Refiner(object):
         self.num_beta = 26 # 10
         self.total_params = + self.num_cam + self.num_theta + self.num_beta  # (134) 85 in total
 
-        # Model spec
-        # For visualization
-        #if self.viz:
-        #    self.renderer = SMPLRenderer(img_size=self.img_size, face_path=config.smpl_face_path)
-
-        # Instantiate SMPL
-        # self.smpl = SMPL(self.smpl_model_path)
-        # SMAL is within the 3d pose estimator
         self.smal = SMAL(self.device, shape_family_id=self.args.shape_family_id)
-        self.WLDO_model = None
+        self.WLDO_model = load_model_from_disk(self.args.checkpoint, self.args.shape_family_id, False, self.device)
 
         # hypothesis: theta0 is the initial pose outputs, theta_var is the refined one?
         self.theta0_shape = [self.batch_size, self.total_params]
-        # Max: flagging for later
         self.theta0 = self.load_mean_param()
         self.theta_prev = self.theta0  # size: 85, need to have this be actual theta0
-            #tf.placeholder_with_default(
-            #self.load_mean_param(), shape=self.theta0_pl_shape, name='theta0')
 
         # Optimization space.
         self.refine_inpose = config.refine_inpose
         if self.refine_inpose:
-            # self.theta_pl = tf.placeholder(tf.float32, shape=self.theta0_pl_shape, name='theta_pl')
-            # self.theta_var = tf.get_variable("theta_var", dtype=tf.float32, shape=self.theta0_pl_shape)
             self.theta = torch.zeros(self.theta0_shape, dtype=torch.float32)   #tf.get_variable("theta_var", dtype=tf.float32, shape=self.theta0_pl_shape)
+
+        # Setup optimizer
+        print('Setting up optimizer..')
+
+        # TODO: change this to latent space parameters?
+        #print('WLDO model parameters: ')
+        #for name, param in self.WLDO_model.module.netG_DETAIL.code_predictor.named_parameters():
+        #    if param.requires_grad:
+        #        print(name, param.data)
+        self.e_optimizer = torch.optim.Adam(self.WLDO_model.module.netG_DETAIL.code_predictor.parameters(), lr=self.e_lr)  # self.optimizer = tf.train.AdamOptimizer
+        # e_optimizer = self.optimizer(self.e_lr)
 
         # For ft-loss
         # self.shape_pl = tf.placeholder_with_default(tf.zeros(10), shape=(10,), name='beta0')
         self.shape = torch.zeros([self.num_beta,], dtype=torch.float32)
 
         # For stick-to-init-pose loss:
-        #self.init_pose_pl = tf.placeholder_with_default(tf.zeros([num_frames, 72]), shape=(num_frames, 72),name='pose0')
-        #self.init_pose_weight_pl = tf.placeholder_with_default(tf.ones([num_frames, 1]), shape=(num_frames, 1),name='pose0_weights')
         self.init_pose = torch.zeros([num_frames, self.num_theta], dtype=torch.float32)
         self.init_pose_weight = torch.zeros([num_frames, 1], dtype=torch.float32)
 
         # For camera loss
-        #self.scale_factors_pl = tf.placeholder_with_default(tf.ones([num_frames]), shape=(num_frames),name='scale_factors')
-        #self.offsets_pl = tf.placeholder_with_default(tf.zeros([num_frames, 2]), shape=(num_frames, 2), name='offsets')
         self.scale_factors = torch.ones([num_frames], dtype=torch.float32)
         self.offsets = torch.zeros([num_frames, 2], dtype=torch.float32)
 
@@ -135,7 +126,7 @@ class Refiner(object):
         self.ief = config.ief  # just a boolean
         if self.ief:
             self.num_stage = config.num_stage
-            self.build_refine_model()
+            # self.build_refine_model()
 
         # setting up for predict
         self.batch_size = 1
@@ -144,63 +135,25 @@ class Refiner(object):
 
 
     def load_mean_param(self):
+        # initializing scale=0.9, translation=0.0, thetas=0.0, betas=0.0
+        # Assuming that motion sequence starts from all 0's?
         mean = np.zeros((1, self.total_params))
         mean[0, 0] = 0.9  # This is scale.
         init_mean = np.tile(mean, (self.batch_size, 1))
         init_mean = torch.FloatTensor(init_mean)
-        # mean = torch.tensor(mean)
 
-        #self.mean_var = tf.Variable(
-        #    mean, name="mean_param", dtype=tf.float32, trainable=True)
-        # self.E_var.append(self.mean_var)
-        # init_mean = tf.tile(self.mean_var, [self.batch_size, 1])
-        # target_shapes = tf.tile(tf.expand_dims(target_shape, 0), [N, 1])
-        # init_mean = torch.tile(mean, (self.batch_size, 1))
-
-        # 85D consists of [cam (3), pose (72), shapes (10)]
-        # cam is [scale, tx, ty]
         return init_mean
-
-    #def prepare(self):
-    #    print('Restoring checkpoint %s..' % self.load_path)
-    #    self.saver.restore(self.sess, self.load_path)
-    #    self.mean_value = self.sess.run(self.mean_var)
 
     # RECONSTRUCTION LOSS CALCULATED HERE
     def build_refine_model(self):
         # LOADING IN 3D POSE ESTIMATOR
-        self.WLDO_model = load_model_from_disk(self.args.checkpoint, self.args.shape_family_id, False, self.device) #Encoder_resnet  # Original 3D pose predictor? "3D pose is predicted by first encoding an image I into a 2048D latent space .."
-        self.threed_enc_fn = Encoder_fc3_dropout(self.total_params*2, self.total_params)  # policy? not sure (my guess is, this is what changes the 3D poses)
+        #self.WLDO_model = #Encoder_resnet  # Original 3D pose predictor? "3D pose is predicted by first encoding an image I into a 2048D latent space .."
+        #self.threed_enc_fn = Encoder_fc3_dropout(self.total_params*2, self.total_params)  # policy? not sure (my guess is, this is what changes the 3D poses)
 
         # Question: does self.E_var have anything to do with the initial state distribution?
         # aren't images_pl empty here?
         #self.img_feat, self.E_var = img_enc_fn(self.images_pl,is_training=False,reuse=False)
         # img_feat should be: camera, pose, shape
-
-        # with torch.no_grad():
-            # model is from model.py
-            # print('input batch size: ', batch.size)
-        preds = self.WLDO_model(self.batch, demo=True)
-
-        # scale_pred, trans_pred, pose_pred, betas_pred, betas_logscale = self.img_feat
-        trans_pred = preds['trans']
-        pose_pred = preds['pose']
-        betas_pred = preds['betas']
-        camera_pred = preds['camera']
-        print('trans pred size: ', trans_pred.size())
-        print('pose pred size: ', pose_pred.size())
-        print('betas pred size: ', betas_pred.size())
-        print('camera pred size: ', camera_pred.size())
-        # print('camera output: ', camera_pred[0])
-        scale_pred = torch.unsqueeze(camera_pred[:, 0], 1)
-        trans_x_pred = torch.unsqueeze(trans_pred[:, 0], 1)
-        trans_y_pred = torch.unsqueeze(trans_pred[:, 1], 1)
-        print('scale pred size: ', scale_pred.size())
-        print('trans x pred size: ', trans_x_pred.size())
-        print('trans y pred size: ', trans_y_pred.size())
-        self.img_feat = torch.cat((scale_pred, trans_x_pred, trans_y_pred, pose_pred, betas_pred), 1)
-        # print('trans output: ', trans_pred[0])
-        # self.set_img_feat_var = self.img_feat_var.assign(self.img_feat_pl)
 
         # Start loop
         self.all_verts = []
@@ -209,7 +162,8 @@ class Refiner(object):
         self.all_Js = []
         self.all_Jsmal = []
         self.final_thetas = []
-        theta_prev = self.theta0  # size: 85, need to have this be actual theta0
+        # why d
+        theta_prev = self.theta0  # size: 3 + 105 + 26 = 134, are these values correct?
         for i in np.arange(self.num_stage):
             print('Iteration %d' % i)
             # ---- Compute outputs
@@ -237,7 +191,6 @@ class Refiner(object):
             cams = theta_here[:, :self.num_cam]
             poses = theta_here[:, self.num_cam:(self.num_cam + self.num_theta)]
             shapes = theta_here[:, (self.num_cam + self.num_theta):]
-            # Rs_wglobal is Nx24x3x3 rotation matrices of poses
 
             # shapes: betas_pred
             # poses: poses_pred
@@ -246,9 +199,7 @@ class Refiner(object):
             Jsmal = self.smal.J_transformed
 
             # Project to 2D!
-            # pred_kp = self.proj_fn(Js, cams, name='proj_2d_stage%d' % i)
             self.all_verts.append(verts)
-            # self.all_kps.append(pred_kp)
             self.all_cams.append(cams)
             self.all_Js.append(Js)
             self.all_Jsmal.append(Jsmal)
@@ -269,18 +220,14 @@ class Refiner(object):
         cams = theta_final[:, :self.num_cam]
         poses = theta_final[:, self.num_cam:(self.num_cam + self.num_theta)]
         shapes = theta_final[:, (self.num_cam + self.num_theta):]
-        # Rs_wglobal is Nx24x3x3 rotation matrices of poses
-        #verts, Js, pred_Rs = self.smpl(shapes, poses, get_skin=True)
         ## we may need trans_pred and betas_logscale
 
         verts, Js, pred_Rs, _ = self.smal(shapes, poses) #,trans=trans_pred,betas_logscale=betas_logscale)
 
         Jsmal = self.smal.J_transformed
         # Project to 2D!
-        # pred_kp = self.proj_fn(Js, cams, name='proj_2d_stage%d' % i)
 
         self.all_verts.append(verts)
-        # self.all_kps.append(pred_kp)
         self.all_cams.append(cams)
         self.all_Js.append(Js)
         self.all_Jsmal.append(Jsmal)
@@ -290,13 +237,13 @@ class Refiner(object):
         # Beta variance should be low! (WHAT IS THIS)
         self.loss_shape = self.shape_loss_weight * shape_variance(shapes, self.shape)
 
-        # (3d CONSISTENCY LOSS)
+        # (3D CONSISTENCY LOSS)
         self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose,
                                                                      weights=self.init_pose_weight)
         # Endpoints should be smooth!! (SMOOTHNESS LOSS)
         self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
 
-        # Camera should be smooth (WHAT IS THIS)
+        # Camera should be smooth (CAMERA SMOOTHNESS LOSS)
         self.loss_camera = self.camera_smooth_weight * camera_smoothness(cams, self.scale_factors, self.offsets,
                                                                          img_size=self.config.img_size)
 
@@ -321,8 +268,40 @@ class Refiner(object):
         e_optimizer.step()
         print('Done initializing the model!')
 
+    def train(self, batch):
+        preds = self.WLDO_model(batch)
+        poses = preds['pose']
+        shapes = preds['betas']
+        camera_pred = preds['camera']
+        trans_pred = preds['trans']
+        scale_pred = torch.unsqueeze(camera_pred[:, 0], 1)
+        trans_x_pred = torch.unsqueeze(trans_pred[:, 0], 1)
+        trans_y_pred = torch.unsqueeze(trans_pred[:, 1], 1)
+        cams = torch.cat((scale_pred, trans_x_pred, trans_y_pred), 1)
 
+        verts, Js, pred_Rs, _ = self.smal(shapes, poses)  # TO ADD: trans=trans_pred,betas_logscale=betas_logscale)
 
+        # shape variance loss
+        mean_shape = torch.mean(shapes, dim=0)
+        self.loss_shape = self.shape_loss_weight * shape_variance(shapes, mean_shape)
+
+        # (3D CONSISTENCY LOSS)
+        # where is init_pose coming?
+        # self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose, weights=self.init_pose_weight)
+
+        # Endpoints should be smooth!! (SMOOTHNESS LOSS)
+        self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
+
+        # Camera should be smooth (CAMERA SMOOTHNESS LOSS)
+        self.loss_camera = self.camera_smooth_weight * camera_smoothness(cams, self.scale_factors, self.offsets,
+                                                                         img_size=self.config.img_size)
+
+        self.total_loss = self.loss_shape + self.loss_joints + self.loss_camera # + self.loss_init_pose
+
+        self.e_optimizer.zero_grad()
+        self.total_loss.backward()
+
+        return self.total_loss
 
     # predict on one image
     def predict(self, batch):

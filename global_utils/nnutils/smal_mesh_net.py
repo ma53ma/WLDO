@@ -322,7 +322,9 @@ class MeshNet(nn.Module):
 
        
     def forward(self, img, masks=None, is_optimization=False, is_var_opt=False):
+        ## image encoder
         img_feat, enc_feat, enc_feat_afterconv1 = self.encoder.forward(img, masks)
+        ## pose outputs
         codes_pred = self.code_predictor.forward(img_feat, enc_feat)
         return codes_pred, enc_feat_afterconv1
 
