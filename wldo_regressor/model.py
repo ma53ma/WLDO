@@ -46,7 +46,7 @@ class Model(nn.Module):
         """Run forward pass; called by both functions <optimize_parameters> and <test>.
         If demo is False, do not calculate accuracy metrics (PCK, IOU)."""
 
-        # print('img name', batch_input['imgname'])
+        print('img name', batch_input['imgname'])
         img = batch_input['img']
         keypoints = batch_input['keypoints']
         seg=batch_input['seg']
@@ -61,7 +61,7 @@ class Model(nn.Module):
 
         if not self.load_from_disk:
             # input size: (batch size, 3, img_size, img_size)
-            # print('input to netG_detail: ', img.size())
+            print('input to netG_detail: ', img.size())
             pred_codes, _ = self.netG_DETAIL(img) # This is the generator
             scale_pred, trans_pred, pose_pred, betas_pred, betas_logscale = pred_codes
 
@@ -84,9 +84,9 @@ class Model(nn.Module):
 
 
         ## OUTPUTS FROM MESHNET DETECTION HEADS ##
-        #print('betas pred shape: ', np.shape(betas_pred))
-        #print('pose pred shape: ', np.shape(pose_pred))
-        #print('trans pred shape: ', trans_pred)
+        print('betas pred shape: ', np.shape(betas_pred))
+        print('pose pred shape: ', np.shape(pose_pred))
+        print('trans pred shape: ', trans_pred)
 
         verts, joints, _, _ = self.smal(
             betas_pred, pose_pred, 

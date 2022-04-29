@@ -70,7 +70,7 @@ NZ_FEAT = 100
 
 # ASSOCIATING SMAL TO ANNOTATED JOINTS
 MODEL_JOINTS = [
-  14, 13, 12, # left front (0, 1, 2)
+  14, 13, 12, # left front (0, 1, 2)      SMALviewer: 11 - 14 left front
   24, 23, 22, # left rear (3, 4, 5)
   10, 9, 8, # right front (6, 7, 8)
   20, 19, 18, # right rear (9, 10, 11)
@@ -80,14 +80,14 @@ MODEL_JOINTS = [
   37, 38] # right tip, left tip (18, 19)
 
 EVAL_KEYPOINTS = [
-  0, 1, 2, # left front
-  3, 4, 5, # left rear
-  6, 7, 8, # right front
-  9, 10, 11, # right rear
+  0, 1, 2, # left front leg (top, middle, paw)
+  3, 4, 5, # left rear leg (top, middle, paw)
+  6, 7, 8, # right front (top, middle, paw)
+  9, 10, 11, # right rear (top, middle, paw)
   12, 13, # tail start -> end
-  14, 15, # left ear, right ear
+  14, 15, # left ear base, right ear base
   16, 17, # nose, chin
-  18, 19] # left tip, right tip
+  18, 19] # left ear tip, right ear tip
 
 KEYPOINT_GROUPS = {
   'legs': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], # legs

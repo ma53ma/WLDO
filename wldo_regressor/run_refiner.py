@@ -17,7 +17,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--checkpoint', default='../data/pretrained/3501_00034_betas_v4.pth', help='Path to network checkpoint')
-parser.add_argument('--src_dir', default="../example3_imgs", type=str, help='The directory of input images')
+parser.add_argument('--src_dir', default="../ex_imgs", type=str, help='The directory of input images')
 parser.add_argument('--result_dir', default='../demo_out', help='Where to export the output data')
 parser.add_argument('--shape_family_id', default=-1, type=int, help='Shape family to use')
 parser.add_argument('--batch_size', default=1, type=int)
@@ -75,10 +75,11 @@ if __name__ == '__main__':
     dataset = DemoDataset(args.src_dir)
 
     refiner = Refiner(dataset, config, num_frames, args, device)
-    '''
-    train_data_loader = DataLoader(dataset, batch_size=num_frames, shuffle=False)  # , num_workers=num_workers)
 
+    train_data_loader = DataLoader(dataset, batch_size=num_frames, shuffle=False)  # , num_workers=num_workers)
     tqdm_iterator = tqdm(train_data_loader, desc='train', total=len(train_data_loader))
+
+
 
     refiner.WLDO_model.train()
     # predict:
@@ -92,14 +93,14 @@ if __name__ == '__main__':
 
     tqdm_iterator = tqdm(pred_data_loader, desc='Eval', total=len(pred_data_loader))
 
-    '''
-    output_txt_filename = 'mod_joints.txt'
-    open('../text_files/' + output_txt_filename, "w").close()
+    
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
 
     refiner.WLDO_model.eval()
+    output_txt_filename = 'mod_joints.txt'
+    open('../text_files/' + output_txt_filename, "w").close()
     # predict:
     count = 0
     # print('starting eval')
@@ -112,6 +113,6 @@ if __name__ == '__main__':
         Jsmal = Jsmal.detach().numpy()
         for frame in Jsmal:
             # print('frame size: ', np.shape(frame))
-            plot_joints(frame, count, ax)
-            # write_to_txt(new_joints, output_txt_filename)
+            # plot_joints(frame, count, ax)
+            write_to_txt(frame, output_txt_filename)
             count += 1

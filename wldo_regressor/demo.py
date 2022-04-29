@@ -22,7 +22,7 @@ nn = torch.nn
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--checkpoint', default='../data/pretrained/3501_00034_betas_v4.pth', help='Path to network checkpoint')
-parser.add_argument('--src_dir', default="../example4_imgs", type=str, help='The directory of input images')
+parser.add_argument('--src_dir', default="../example3_imgs", type=str, help='The directory of input images')
 parser.add_argument('--result_dir', default='../demo_out', help='Where to export the output data')
 parser.add_argument('--shape_family_id', default=-1, type=int, help='Shape family to use')
 parser.add_argument('--batch_size', default=4, type=int)

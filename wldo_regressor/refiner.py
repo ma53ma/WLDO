@@ -58,7 +58,7 @@ class Refiner(object):
         # Loss & Loss weights:
         self.e_lr = config.e_lr
 
-        # self.e_loss_weight = config.e_loss_weight
+        self.e_loss_weight = config.e_loss_weight
         self.shape_loss_weight = config.shape_loss_weight
         self.joint_smooth_weight = config.joint_smooth_weight
         self.camera_smooth_weight = config.camera_smooth_weight
@@ -144,131 +144,10 @@ class Refiner(object):
 
         return init_mean
 
-    # RECONSTRUCTION LOSS CALCULATED HERE
-    def build_refine_model(self):
-        # LOADING IN 3D POSE ESTIMATOR
-        #self.WLDO_model = #Encoder_resnet  # Original 3D pose predictor? "3D pose is predicted by first encoding an image I into a 2048D latent space .."
-        #self.threed_enc_fn = Encoder_fc3_dropout(self.total_params*2, self.total_params)  # policy? not sure (my guess is, this is what changes the 3D poses)
-
-        # Question: does self.E_var have anything to do with the initial state distribution?
-        # aren't images_pl empty here?
-        #self.img_feat, self.E_var = img_enc_fn(self.images_pl,is_training=False,reuse=False)
-        # img_feat should be: camera, pose, shape
-
-        # Start loop
-        self.all_verts = []
-        self.all_kps = []
-        self.all_cams = []
-        self.all_Js = []
-        self.all_Jsmal = []
-        self.final_thetas = []
-        # why d
-        theta_prev = self.theta0  # size: 3 + 105 + 26 = 134, are these values correct?
-        for i in np.arange(self.num_stage):
-            print('Iteration %d' % i)
-            # ---- Compute outputs
-            print('theta prev size: ', theta_prev.size())
-            print('img feat size: ', self.img_feat.size())
-
-            state = torch.cat((self.img_feat, theta_prev), 1)
-            print('state data type: ', state.dtype)
-            '''
-            # I think the reuse variable here is tensorflow specific
-            if i == 0:
-                delta_theta, threeD_var = threed_enc_fn(state,num_output=self.total_params,is_training=False,reuse=False)
-                self.E_var.append(threeD_var)
-            else:
-                delta_theta, _ = threed_enc_fn(state,num_output=self.total_params,is_training=False,reuse=True)
-            '''
-            delta_theta = self.threed_enc_fn(state)
-
-            ## output of policy: delta_theta
-            # Compute new theta
-            theta_here = theta_prev + delta_theta
-
-            # modifed values below
-            # cam = N x 3, pose N x self.num_theta, shape: N x 10
-            cams = theta_here[:, :self.num_cam]
-            poses = theta_here[:, self.num_cam:(self.num_cam + self.num_theta)]
-            shapes = theta_here[:, (self.num_cam + self.num_theta):]
-
-            # shapes: betas_pred
-            # poses: poses_pred
-            # we may need trans_pred and betas_logscale here
-            verts, Js, pred_Rs, _ = self.smal(shapes, poses) #, trans=trans_pred, betas_logscale=betas_logscale)
-            Jsmal = self.smal.J_transformed
-
-            # Project to 2D!
-            self.all_verts.append(verts)
-            self.all_cams.append(cams)
-            self.all_Js.append(Js)
-            self.all_Jsmal.append(Jsmal)
-            # save each theta.
-            self.final_thetas.append(theta_here)
-            # Finally, update to end iteration.
-            theta_prev = theta_here
-
-
-        # Compute everything with the final theta.
-        # not sure where theta_var is actually updated
-        if self.refine_inpose:
-            #self.set_theta_var = self.theta_var.assign(self.theta_pl)
-            theta_final = self.theta_var
-        else:
-            theta_final = theta_here
-
-        cams = theta_final[:, :self.num_cam]
-        poses = theta_final[:, self.num_cam:(self.num_cam + self.num_theta)]
-        shapes = theta_final[:, (self.num_cam + self.num_theta):]
-        ## we may need trans_pred and betas_logscale
-
-        verts, Js, pred_Rs, _ = self.smal(shapes, poses) #,trans=trans_pred,betas_logscale=betas_logscale)
-
-        Jsmal = self.smal.J_transformed
-        # Project to 2D!
-
-        self.all_verts.append(verts)
-        self.all_cams.append(cams)
-        self.all_Js.append(Js)
-        self.all_Jsmal.append(Jsmal)
-        # save each theta.
-        self.final_thetas.append(theta_final)
-
-        # Beta variance should be low! (WHAT IS THIS)
-        self.loss_shape = self.shape_loss_weight * shape_variance(shapes, self.shape)
-
-        # (3D CONSISTENCY LOSS)
-        self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose)
-        # Endpoints should be smooth!! (SMOOTHNESS LOSS)
-        self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
-
-        # Camera should be smooth (CAMERA SMOOTHNESS LOSS)
-        self.loss_camera = self.camera_smooth_weight * camera_smoothness(cams, self.scale_factors, self.offsets,
-                                                                         img_size=self.config.img_size)
-
-        self.total_loss = self.loss_shape + self.loss_joints + self.loss_init_pose + self.loss_camera
-
-        # Setup optimizer
-        print('Setting up optimizer..')
-        e_optimizer = torch.optim.Adam(self.threed_enc_fn.parameters(), lr=self.e_lr) #self.optimizer = tf.train.AdamOptimizer
-        # e_optimizer = self.optimizer(self.e_lr)
-
-        e_optimizer.zero_grad()
-        self.total_loss.backward()
-
-        '''
-        # optimizing wrt theta?
-        if self.refine_inpose:
-            self.e_opt = e_optimizer.minimize(self.total_loss, var_list=[self.theta_var])
-        else:
-            self.e_opt = e_optimizer.minimize(self.total_loss, var_list=[self.img_feat_var])
-        '''
-
-        e_optimizer.step()
-        print('Done initializing the model!')
-
     def train(self, batch):
+        print(0)
         preds = self.WLDO_model(batch)
+        print(0.5)
         poses = preds['pose']
         shapes = preds['betas']
         camera_pred = preds['camera']
@@ -280,26 +159,33 @@ class Refiner(object):
 
         verts, Js, pred_Rs, _ = self.smal(shapes, poses)  # TO ADD: trans=trans_pred,betas_logscale=betas_logscale)
 
+        # KEYPOINT PROJECTION LOSS
+        #self.keypoint_loss = self.e_loss_weight * keypoint_l1_loss(kp_gt, kp_pred)
+        print(1)
         # shape variance loss
         mean_shape = torch.mean(shapes, dim=0)
         self.loss_shape = self.shape_loss_weight * shape_variance(shapes, mean_shape)
+        print(2)
 
         # (3D CONSISTENCY LOSS)
         # where is init_pose coming?
         self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose)
+        print(3)
 
         # Endpoints should be smooth!! (SMOOTHNESS LOSS)
         self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
+        print(4)
 
         # Camera should be smooth (CAMERA SMOOTHNESS LOSS)
         self.loss_camera = self.camera_smooth_weight * camera_smoothness(cams, self.scale_factors, self.offsets,
                                                                          img_size=self.config.img_size)
+        print(5)
 
         self.total_loss = self.loss_shape + self.loss_joints + self.loss_camera # + self.loss_init_pose
 
         self.e_optimizer.zero_grad()
         self.total_loss.backward()
-
+        print(6)
         return self.total_loss
 
     # predict on one image
@@ -324,6 +210,11 @@ class Refiner(object):
 
         Jsmal = self.smal.J_transformed
         # print('returning')
+
+        reorder(Jsmal)
+
+        moving_root(Jsmal)
+
         return Jsmal
 
 # All the  loss functions.
@@ -355,10 +246,10 @@ def joint_smoothness(joints):
     """
     # 7,11,17,21: four hips
     if joints.shape[1] == 35:
-        upper_left_hip = 7
-        upper_right_hip = 11
-        rear_left_hip = 17
-        rear_right_hip = 21
+        upper_left_hip = 11
+        upper_right_hip = 7
+        rear_left_hip = 21
+        rear_right_hip = 17
         # left_hip, right_hip = 3, 2
         #root = (joints[:, left_hip] + joints[:, right_hip]) / 2.
         #root = tf.expand_dims(root, 1)
@@ -455,3 +346,130 @@ def camera_smoothness(cams, scale_factors, offsets, img_size=224):
     scale_diff = loss(curr_scales, next_scales)
     trans_diff = loss(curr_trans, next_trans)
     return scale_diff + trans_diff
+
+def keypoint_l1_loss(kp_gt, kp_pred, scale=1., name=None):
+    """
+    kp_gt: from 2d pose estimator
+    kp_pred: projected version of 3D pose estimate
+    computes: \Sum_i [0.5 * vis[i] * |kp_gt[i] - kp_pred[i]|] / (|vis|)
+    Inputs:
+      kp_gt  : N x K x 3
+      kp_pred: N x K x 2
+    """
+    kp_gt = torch.reshape(kp_gt, [-1, 3])    #kp_gt = tf.reshape(kp_gt, (-1, 3))
+    kp_pred = torch.reshape(kp_pred, [-1, 2])           #kp_pred = tf.reshape(kp_pred, (-1, 2))
+
+    vis = torch.unsqueeze(torch.FloatTensor(kp_gt[:, 2]), 1) # vis = tf.expand_dims(tf.cast(kp_gt[:, 2], tf.float32), 1)
+    differences = torch.abs(kp_gt[:, :2] - kp_pred)     #res = tf.losses.absolute_difference(kp_gt[:, :2], kp_pred, weights=vis)
+    res = torch.sum(differences*vis)
+
+    return res
+
+def straight_leg(joints):
+    """
+    joints: N x 35(?) for SMAL x 3
+    Computes smoothness of joints relative to root.
+    """
+    # 7,11,17,21: four hips
+    N = joints.shape[0]
+    for i in range(0, N):
+        ulh = joints[i, 7, 1]
+        urh = joints[i, 11, 1]
+        rlh = joints[i, 17, 1]
+        rrh = joints[i, 21, 1]
+
+
+        joints[i, 8, 1] = ulh
+        joints[i, 9, 1] = ulh
+        joints[i, 10, 1] = ulh
+
+
+        joints[i, 12, 1] = urh
+        joints[i, 13, 1] = urh
+        joints[i, 14, 1] = urh
+
+
+        joints[i, 18, 1] = rlh
+        joints[i, 19, 1] = rlh
+        joints[i, 20, 1] = rlh
+
+
+        joints[i, 22, 1] = rrh
+        joints[i, 23, 1] = rrh
+        joints[i, 24, 1] = rrh
+
+    return joints
+
+
+def reorder(joints):
+    N = joints.shape[0]
+    for i in range(0, N):
+        hip = joints[i, 7, 1]
+        top = joints[i, 8, 1]
+        mid = joints[i, 9, 1]
+        toe = joints[i, 10, 1]
+
+
+        joints[i, 7, 1] = joints[i, 11, 1]
+        joints[i, 8, 1] = joints[i, 12, 1]
+        joints[i, 9, 1] = joints[i, 13, 1]
+        joints[i, 10, 1] = joints[i, 14, 1]
+
+
+        joints[i, 11, 1] = hip
+        joints[i, 12, 1] = top
+        joints[i, 13, 1] = mid
+        joints[i, 14, 1] = toe
+
+
+
+        hip = joints[i, 17, 1]
+        top = joints[i, 18, 1]
+        mid = joints[i, 19, 1]
+        toe = joints[i, 20, 1]
+
+
+        joints[i, 17, 1] = joints[i, 21, 1]
+        joints[i, 18, 1] = joints[i, 22, 1]
+        joints[i, 19, 1] = joints[i, 23, 1]
+        joints[i, 20, 1] = joints[i, 24, 1]
+
+
+        joints[i, 21, 1] = hip
+        joints[i, 22, 1] = top
+        joints[i, 23, 1] = mid
+        joints[i, 24, 1] = toe
+    return joints
+
+
+
+def find_freq(joints):
+    axis = 1 #x axis
+    N = joints.shape[0]
+    first_encounter = -1
+    second_encounter = -1
+    for i in range(0, N):
+        if (first_encounter == -1 and joints[i, 10, 1] == joints[i, 14, 1]):
+            first_encounter = i
+        elif (second_encounter == -1 and joints[i, 10, 1] == joints[i, 14, 1]):
+            second_encounter = i
+        else:
+            break
+    return 2*(second_encounter - first_encounter)
+
+
+
+def moving_root(joints, scale = 1):
+    """
+    joints: N x 35(?) for SMAL x 3
+    Computes smoothness of joints relative to root.
+    """
+    # 7,11,17,21: four hips
+    freq = find_freq(joints)
+    axis = 1 #x axis
+    N = joints.shape[0]
+    M = joints.shape[1]
+    for i in range(0, N):
+        for j in range(0, M):
+            joints[i, j, axis] += scale*freq
+    return joints
