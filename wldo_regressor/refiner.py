@@ -145,9 +145,7 @@ class Refiner(object):
         return init_mean
 
     def train(self, batch):
-        print(0)
         preds = self.WLDO_model(batch)
-        print(0.5)
         poses = preds['pose']
         shapes = preds['betas']
         camera_pred = preds['camera']
@@ -161,31 +159,25 @@ class Refiner(object):
 
         # KEYPOINT PROJECTION LOSS
         #self.keypoint_loss = self.e_loss_weight * keypoint_l1_loss(kp_gt, kp_pred)
-        print(1)
         # shape variance loss
         mean_shape = torch.mean(shapes, dim=0)
         self.loss_shape = self.shape_loss_weight * shape_variance(shapes, mean_shape)
-        print(2)
 
         # (3D CONSISTENCY LOSS)
         # where is init_pose coming?
         self.loss_init_pose = self.init_pose_loss_weight * init_pose(pred_Rs, self.init_pose)
-        print(3)
 
         # Endpoints should be smooth!! (SMOOTHNESS LOSS)
         self.loss_joints = self.joint_smooth_weight * joint_smoothness(Js)
-        print(4)
 
         # Camera should be smooth (CAMERA SMOOTHNESS LOSS)
         self.loss_camera = self.camera_smooth_weight * camera_smoothness(cams, self.scale_factors, self.offsets,
                                                                          img_size=self.config.img_size)
-        print(5)
 
         self.total_loss = self.loss_shape + self.loss_joints + self.loss_camera # + self.loss_init_pose
 
         self.e_optimizer.zero_grad()
         self.total_loss.backward()
-        print(6)
         return self.total_loss
 
     # predict on one image
